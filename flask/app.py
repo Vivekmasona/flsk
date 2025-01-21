@@ -1,49 +1,49 @@
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, request, jsonify
+from yt_dlp import YoutubeDL
 
 app = Flask(__name__)
 
-# A simple in-memory structure to store tasks
-tasks = []
+@app.route('/json', methods=['GET'])
+def get_youtube_audio():
+    youtube_url = request.args.get('url')
 
-@app.route('/', methods=['GET'])
-def home():
-    # Display existing tasks and a form to add a new task
-    html = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Todo List</title>
-</head>
-<body>
-    <h1>Todo List</h1>
-    <form action="/add" method="POST">
-        <input type="text" name="task" placeholder="Enter a new task">
-        <input type="submit" value="Add Task">
-    </form>
-    <ul>
-        {% for task in tasks %}
-        <li>{{ task }} <a href="/delete/{{ loop.index0 }}">x</a></li>
-        {% endfor %}
-    </ul>
-</body>
-</html>
-'''
-    return render_template_string(html, tasks=tasks)
+    if youtube_url:
+        try:
+            # yt-dlp options for extracting URL without downloading
+            ydl_opts = {
+                'format': 'bestaudio/best',  # Get best audio or single file
+                'quiet': True,  # Suppress verbose output
+            }
+            with YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(youtube_url, download=False)  # No download
+                playback_url = info_dict.get('url', None)  # Direct playback URL
+                title = info_dict.get('title', 'Unknown Title')
 
-@app.route('/add', methods=['POST'])
-def add_task():
-    # Add a new task from the form data
-    task = request.form.get('task')
-    if task:
-        tasks.append(task)
-    return home()
+            if playback_url:
+                response = {
+                    "status": "success",
+                    "title": title,
+                    "playback_url": playback_url
+                }
+            else:
+                response = {
+                    "status": "error",
+                    "message": "Could not retrieve playback URL"
+                }
 
-@app.route('/delete/<int:index>', methods=['GET'])
-def delete_task(index):
-    # Delete a task based on its index
-    if index < len(tasks):
-        tasks.pop(index)
-    return home()
+        except Exception as e:
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+
+    else:
+        response = {
+            "status": "error",
+            "message": "No URL provided. Use '?url=YOUTUBE_URL' in the query."
+        }
+
+    return jsonify(response)
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True)
